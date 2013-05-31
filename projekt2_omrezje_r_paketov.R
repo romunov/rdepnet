@@ -121,5 +121,3 @@ imports.graph <- graph.data.frame(imports.graph.data, directed = TRUE)
 ###################################
 enhances.graph.data <- clean.data[clean.data$relation == "Enhances", ]
 enhances.graph <- graph.data.frame(enhances.graph.data, directed = TRUE)
-
-# testiram branching, dodam vrstico
