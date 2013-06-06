@@ -1,7 +1,7 @@
 CRAN packages network graph
 ========================================================
 
-Part of a project for Network analysis class is constructing package dependency tree off of CRAN (I called shotgun). I could scrape CRAN website for packages and their dependencies, suggests, imports and enhancements ([as done here](http://librestats.com/2012/05/17/visualizing-the-cran-graphing-package-dependencies/)), but I opted for a more elegant solution via `available.packages` function, that reports which packages are available on CRAN and also adds all the above relationships.
+Part of a project for Network analysis class is constructing package dependency tree off of CRAN (I called shotgun). I could scrape CRAN website for packages and their dependencies, suggests, imports and enhancements ([as done here](http://librestats.com/2012/05/17/visualizing-the-cran-graphing-package-dependencies/)), but I opted for a more elegant solution via `available.packages` function, that reports which packages are available on CRAN and also adds all the above relationships. Feel free to add to this function by pulling [my GitHub repo](https://github.com/romunov/rdepnet).
 
 ```{r}
 library(igraph)
@@ -12,12 +12,12 @@ library(RColorBrewer)
 
 ```{r}
 # Get a list of available packages.
-dep.data <- available.packages()
-head(dep.data)
+dep.data <- available.packages(contriburl = "http://cran.at.r-project.org/bin/windows/contrib/3.0")
+dep.data[1:5, 1:5]
 # Get a subset of variables of interest.
 dep.data <- dep.data[, c("Package", "Depends", "Imports", "Suggests", "Enhances")]
 
-# Some packages depends/import to multiple packages. Let's 
+# Some (most?) packages depends/import to multiple packages. Let's 
 # tease those packages apart.
 # This function will make a "long" list of relationships
 # for each package (where applicable). If there's no relationship, the output is "none".
@@ -140,8 +140,62 @@ graph.somepara.depends <- plotGraph(x = clean.data,
    layout = layout.kamada.kawai)
 ```
 
-I also fancy packages for spatial data. Barry has made a contribution on this subject, and you can [find the graphs here](http://www.maths.lancs.ac.uk/~rowlings/Teaching/UseR2012/introduction2Talk.html). Package `sp` defines the methods that most packages use, so I would expect it to be "cappo di banda".
+I also fancy packages for spatial data. Barry has made a contribution on this subject, and you can [find the graphs here](http://www.maths.lancs.ac.uk/~rowlings/Teaching/UseR2012/introduction2Talk.html).
+A lot of packages depend on `sp`.
 
 ```{r}
-
+graph.sp2 <- plotGraph(x = clean.data, pkg.to = "sp", relation = "Depends",
+   vertex.label.color = "black", edge.width = 0.1, edge.color = "#377EB8",
+   vertex.label.cex = 0.9, vertex.size = 0, 
+   vertex.color = "white", layout = layout.kamada.kawai)
 ```
+
+```{r}
+spp <- c("ade4", "adehabitat", "adehabitatHR", "adehabitatHS", "adehabitatLT", 
+"adehabitatMA", "ads", "akima", "ash", "aspace", "automap", "classInt", 
+"CompRandFld", "constrainedKriging", "cshapes", "DCluster", "deldir", 
+"DSpat", "ecespa", "fields", "FieldSim", "gdistance", "Geneland", 
+"GEOmap", "geomapdata", "geonames", "geoR", "geoRglm", "geosphere", 
+"geospt", "geospt", "GeoXp", "ggmap", "glmmBUGS", "gmt", "GriegSmith", 
+"gstat", "Guerry", "hdeco", "intamap", "landsat", "mapdata", 
+"mapproj", "maps", "maptools", "MarkedPointProcess", "MBA", "Metadata", 
+"micromap", "ModelMap", "ncdf", "ncf", "nlme", "OpenStreetMap", 
+"osmar", "pastecs", "PBSmapping", "PBSmodelling", "plotKML", 
+"psgp", "ramps", "RandomFields", "rangeMapper", "RArcInfo", "raster", 
+"rasterVis", "RColorBrewer", "regress", "rgdal", "rgeos", "RgoogleMaps", 
+"RPyGeo", "RSAGA", "RSurvey", "rworldmap", "sgeostat", "shapefiles", 
+"sp", "spacetime", "sparr", "spatcounts", "spatgraphs", "spatial", 
+"spatialCovariance", "SpatialExtremes", "spatialkernel", "spatialprobit", 
+"spatialsegregation", "spatstat", "spBayes", "spcosa", "spdep", 
+"spgrass6", "spgwr", "sphet", "splancs", "spsurvey", "Stem", 
+"tgp", "trip", "tripack", "tripEstimation", "UScensus2000blkgrp", 
+"UScensus2000cdp", "UScensus2000tract", "vardiag", "vec2dtransf", 
+"vegan")
+graph.spp <- plotGraph(x = clean.data, pkg.to = spp, relation = "Depends",
+   vertex.label.color = "black", edge.width = 0.1, edge.color = "#377EB8",
+   vertex.label.cex = 0.5, vertex.size = 0, edge.arrow.size = 0.2,
+   vertex.color = "white", layout = layout.kamada.kawai)
+```
+
+What a mess! Let's see what's going on for the top few packages.
+
+```{r}
+top.sp <- names(sort(degree(graph.spp), decreasing = TRUE)[1:20])
+graph.top.spp <- plotGraph(x = clean.data, pkg.to = top.sp, relation = "Depends",
+   vertex.label.color = "black", edge.width = 0.1, edge.color = "#377EB8",
+   vertex.label.cex = 0.5, vertex.size = 0, edge.arrow.size = 0.2,
+   vertex.color = "white", layout = layout.kamada.kawai)
+```
+
+Better, but let's narrow it down even further. We exclude `nlme` and `RColorBrewer`.
+
+```{r}
+top.sp <- names(sort(degree(graph.spp), decreasing = TRUE)[1:12])
+top.sp <- top.sp[which(!top.sp %in% c("nlme", "RColorBrewer"))]
+graph.top.spp <- plotGraph(x = clean.data, pkg.to = top.sp, relation = "Depends",
+   vertex.label.color = "black", edge.width = 0.1, edge.color = "#377EB8",
+   vertex.label.cex = 0.6, vertex.size = 0, edge.arrow.size = 0.2,
+   vertex.color = "white", layout = layout.kamada.kawai)
+```
+
+It's up to you to explore your favorite packages' networks further. For comments or questions, feel free to contact me.
