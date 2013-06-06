@@ -1,0 +1,147 @@
+CRAN packages network graph
+========================================================
+
+Part of a project for Network analysis class is constructing package dependency tree off of CRAN (I called shotgun). I could scrape CRAN website for packages and their dependencies, suggests, imports and enhancements ([as done here](http://librestats.com/2012/05/17/visualizing-the-cran-graphing-package-dependencies/)), but I opted for a more elegant solution via `available.packages` function, that reports which packages are available on CRAN and also adds all the above relationships.
+
+```{r}
+library(igraph)
+library(reshape2)
+library(stringr)
+library(RColorBrewer)
+```
+
+```{r}
+# Get a list of available packages.
+dep.data <- available.packages()
+head(dep.data)
+# Get a subset of variables of interest.
+dep.data <- dep.data[, c("Package", "Depends", "Imports", "Suggests", "Enhances")]
+
+# Some packages depends/import to multiple packages. Let's 
+# tease those packages apart.
+# This function will make a "long" list of relationships
+# for each package (where applicable). If there's no relationship, the output is "none".
+make.data <- apply(dep.data, 1, FUN = function(x) {
+
+      if (all(is.na(x[-1]))) return(data.frame(from = x[1], to = x[1], relation = "none"))
+      
+      x2 <- na.omit(x[-1])
+      x2 <- sapply(x2, strsplit, ",")
+      
+      out <- data.frame(from = rep(x[1], length(unlist(x2))), to = unlist(x2), relation = rep(names(x2), times = sapply(x2, length)))
+      rownames(out) <- 1:nrow(out)
+      out
+   })
+done.data <- do.call("rbind", make.data)
+rownames(done.data) <- 1:nrow(done.data)
+
+# We clean the data. 
+clean.data <- done.data # make a copy
+# remove version numbers
+clean.data$to <- sub("\\((.*?)\\)", "", x = clean.data$to, perl = TRUE)
+# remove newlines
+clean.data$to <- sub("\\\n", "", x = clean.data$to, perl = TRUE)
+# remove dependency on R (*)
+clean.data[clean.data$to == "R" | clean.data$to == "R ", "to"] <- as.character(clean.data[clean.data$to == "R" | clean.data$to == "R ", "from"])
+# clean whitespace
+clean.data$to <- as.factor(str_trim(clean.data$to, "both"))
+# remove loops
+clean.data <- clean.data[!apply(clean.data[, c("from", "to")], 1, function(x) x[1] == x[2]), ] 
+```
+
+This is the function that will be doing the heavy drawing for us.
+```{r}
+#' Draws a subset of a data.frame as a network graph.
+#' @param x data.frame. Has at least three columns, from, to and relation.
+#' @param relation Character vector of length one. Rows with what relation from column relation (see x) should be used?
+#' @param pkg Character. Package name to be subsetted.
+#' @param ... Arguments passed to plot function that plots igraph object.
+#' @return \code{igraph} object with the possible side effect of plotting the object.
+
+plotGraph <- function(x, relation = NULL, pkg.to = NULL, 
+   pkg.from = NULL, plot = TRUE, ...) {
+   
+   # prepare the data to be plotted
+   if (!is.null(relation)) {
+      gd <- droplevels(x[x$relation %in% relation, ])
+   } else {
+      gd <- x
+   }
+   if (!is.null(pkg.to)) gd <- gd[gd$to %in% pkg.to, ]
+   if (!is.null(pkg.from)) gd <- gd[gd$from %in% pkg.from, ]
+   
+   # make the data an igraph object and plot it (if specified)
+   g <- graph.data.frame(gd, directed = TRUE)
+   
+   cc <- E(g)$relation
+   if (any(unique(cc) == "Imports")) cc[cc == "Imports"] <- "#E41A1C"
+   if (any(unique(cc) == "Suggests")) cc[which(cc == "Suggests")] <- "#984EA3"
+   if (any(unique(cc) == "Enhances")) cc[which(cc == "Enhances")] <- "#4DAF4A"
+   if (any(unique(cc) == "Depends")) cc[which(cc == "Depends")] <- "#377EB8"
+   E(g)$color <- cc
+   
+   if (plot) plot(g, ...)
+   # see ?igraph:::layout for possible layout options
+   g
+}
+```
+
+We can try and draw a full dependency graph, but it doesn't look pretty. It also takes a long time. Consider before executing this next chunk. Output of `plotGraph` function is an `igraph` object, which is why we save it to a variable for possible further manipulation.
+```{r, eval = FALSE}
+graph.all.depends <- plotGraph(x = clean.data, relation = "Depends",
+   vertex.label.color = "blue", edge.width = 0.5, edge.color = "#ACC49D",
+   edge.arrow.size = 0.5, vertex.label.cex = 0.7, vertex.size = 0, 
+   vertex.color = "white", layout = layout.kamada.kawai)
+```
+
+Another example of usage would be to plot the relationships between packages for high performance computing (see [HPC task view](http://cran.r-project.org/web/views/HighPerformanceComputing.html) on CRAN).
+
+```{r}
+hpp <- c("batch", "BatchExperiments", "BatchJobs", "bayesm", "bcp", 
+"biglars", "biglm", "bigmemory", "bigrf", "biopara", "bnlearn", 
+"caret", "cudaBayesreg", "data.table", "dclone", "doMC", "doMPI", 
+"doRedis", "doRNG", "doSNOW", "ff", "foreach", "fork", "GAMBoost", 
+"gcbd", "Geneland", "gputools", "GridR", "HadoopStreaming", "harvestr", 
+"HiPLARM", "inline", "latentnet", "lga", "magma", "mapReduce", 
+"Matching", "mchof", "multicore", "nws", "OpenCL", "orloca", 
+"partDSA", "pbdBASE", "pbdDEMO", "pbdDMAT", "pbdMPI", "pbdNCDF4", 
+"pbdSLAP", "peperr", "permGPU", "pmclust", "profr", "proftools", 
+"pvclust", "Rcpp", "Rdsm", "rgenoud", "RInside", "rJava", "rlecuyer", 
+"Rmpi", "rpud", "rredis", "rsprng", "scaleboot", "snow", "snowfall", 
+"snowFT", "speedglm", "sprint", "sqldf", "STAR", "tm", "varSelRF", 
+"WideLM", "xgrid")
+
+graph.parallel.depends <- plotGraph(x = clean.data, pkg.to = hpp, relation = "Depends",
+   vertex.label.color = "black", edge.width = 1, edge.arrow.size = 0.2, 
+   vertex.label.cex = 0.9, vertex.size = 0, vertex.color = "white", 
+   layout = layout.kamada.kawai)
+```
+
+Or perhaps we'd be interested in seeing relationships for parallel computing packages. We notice that `foreach`, `snow` and `Rmpi` are quite popular. `multicore` and `snowfall` (this one being my fav) have less relationships.
+
+Oh, I forgot to mention, lines are color coded and denote different relationship types (colors were taken from `brewer.pal(4, "Set1")`).
+```{r}
+graph.somepara.all <- plotGraph(x = clean.data, 
+      pkg.to = c("snowfall", "snow", "foreach", "Rmpi", "multicore", 
+      "sprint", "biopara", "bigrf", "doMPI", "doRedis", "nws", "snowFT"), 
+   vertex.label.color = "black", edge.width = 1, edge.arrow.size = 0.2, 
+   vertex.label.cex = 0.9, vertex.size = 0, vertex.color = "white", 
+   layout = layout.kamada.kawai)
+```
+
+Let's see only depends for parallel computing packages. Notice that depends are colored blue(ish). Quite a few packages depend on `foreach`.
+```{r}
+graph.somepara.depends <- plotGraph(x = clean.data, 
+      pkg.to = c("snowfall", "snow", "foreach", "Rmpi", "multicore", 
+      "sprint", "biopara", "bigrf", "doMPI", "doRedis", "nws", "snowFT"), 
+   relation = "Depends",
+   vertex.label.color = "black", edge.width = 1, edge.arrow.size = 0.2, 
+   vertex.label.cex = 0.9, vertex.size = 0, vertex.color = "white", 
+   layout = layout.kamada.kawai)
+```
+
+I also fancy packages for spatial data. Barry has made a contribution on this subject, and you can [find the graphs here](http://www.maths.lancs.ac.uk/~rowlings/Teaching/UseR2012/introduction2Talk.html). Package `sp` defines the methods that most packages use, so I would expect it to be "cappo di banda".
+
+```{r}
+
+```
